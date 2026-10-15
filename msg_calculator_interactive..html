@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSG-Equivalent Analyzer</title>
+<!-- Offline-safe: no external requests. System font stacks approximate the
+     device UI face (sans) and the readout face (tabular mono) on every OS. -->
+<style>
+  :root{
+    --body-bg:#15171A;
+    --panel:#1D2023;
+    --panel-2:#20242A;
+    --panel-raised:#262A31;
+    --edge:#33383F;
+    --edge-soft:#2A2E35;
+    --ink:#E8EAED;
+    --ink-dim:#9CA3AD;
+    --ink-faint:#666D78;
+    --measure:#4FD8C4;
+    --measure-dim:#2A6A61;
+    --measure-glow:rgba(79,216,196,0.35);
+    --added:#E8A33D;
+    --added-dim:#6B5024;
+    --warn:#E8664A;
+    --warn-bg:#3A2320;
+    --ok:#4FD8C4;
+    --ok-bg:#17302C;
+    --radius:6px;
+    --radius-sm:3px;
+    --font-ui:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-data:'SF Mono','Consolas','Cascadia Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-ui);
+    color:var(--ink);
+    background:
+      radial-gradient(ellipse 1200px 600px at 50% -10%, #1C2024 0%, var(--body-bg) 60%);
+    min-height:100%;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 56px;}
+
+  /* ---------- Device header ---------- */
+  .device-header{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--panel); border:1px solid var(--edge); border-radius:var(--radius);
+    padding:16px 22px; margin-bottom:16px; gap:20px; flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{
+    width:34px; height:34px; border-radius:8px; flex:none;
+    background:linear-gradient(155deg, var(--measure) 0%, var(--measure-dim) 100%);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset, 0 2px 8px rgba(79,216,196,0.25);
+  }
+  .brand-mark svg{width:18px; height:18px;}
+  .brand-text .title{
+    font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--ink); line-height:1.25;
+  }
+  .brand-text .subtitle{
+    font-family:var(--font-data); font-size:10.5px; letter-spacing:.06em; color:var(--ink-faint);
+    text-transform:uppercase; margin-top:2px;
+  }
+  .status-strip{
+    display:flex; gap:18px; font-family:var(--font-data); font-size:10.5px; color:var(--ink-dim);
+    flex-wrap:wrap;
+  }
+  .status-item{display:flex; align-items:center; gap:6px;}
+  .status-led{width:6px; height:6px; border-radius:50%; background:var(--measure); box-shadow:0 0 6px var(--measure-glow);}
+  .status-item b{color:var(--ink);}
+
+  /* ---------- Layout ---------- */
+  .grid{display:grid; grid-template-columns:1fr 1.15fr; gap:14px; align-items:start;}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--edge);
+    border-radius:var(--radius);
+    padding:18px 18px 20px;
+  }
+  .panel + .panel{margin-top:14px;}
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--edge-soft);
+  }
+  .panel-head h2{
+    font-size:12px; font-weight:600; margin:0; color:var(--ink);
+    text-transform:uppercase; letter-spacing:.07em;
+  }
+  .panel-head .tag{
+    font-family:var(--font-data); font-size:10px; color:var(--ink-faint);
+    border:1px solid var(--edge); border-radius:20px; padding:2px 9px;
+  }
+  .panel p.hint{font-size:12px; color:var(--ink-dim); margin:0 0 14px; line-height:1.55;}
+
+  textarea{
+    width:100%; min-height:92px; resize:vertical;
+    font-family:var(--font-data); font-size:12.5px; line-height:1.55;
+    border:1px solid var(--edge); border-radius:var(--radius-sm); background:var(--panel-2);
+    color:var(--ink); padding:11px 12px; outline:none;
+  }
+  textarea:focus{border-color:var(--measure); box-shadow:0 0 0 3px var(--measure-glow);}
+
+  .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;}
+  .field{display:flex; flex-direction:column; gap:6px; flex:1; min-width:150px;}
+  .field label{
+    font-size:10px; color:var(--ink-faint); font-family:var(--font-data);
+    text-transform:uppercase; letter-spacing:.06em;
+  }
+  input[type=text], input[type=number]{
+    font-family:var(--font-data); font-size:13px;
+    border:1px solid var(--edge); border-radius:var(--radius-sm); background:var(--panel-2);
+    color:var(--ink); padding:9px 10px; outline:none; width:100%;
+  }
+  input:focus{border-color:var(--measure); box-shadow:0 0 0 3px var(--measure-glow);}
+  input[type=range]{
+    width:100%; accent-color:var(--measure); height:4px;
+  }
+
+  button{
+    font-family:var(--font-ui); font-weight:600; font-size:12.5px;
+    border:none; border-radius:var(--radius-sm); padding:10px 16px; cursor:pointer;
+    transition:transform .08s ease, opacity .15s ease, box-shadow .15s ease;
+  }
+  button:active{transform:scale(0.98);}
+  .btn-primary{
+    background:var(--measure); color:#0A1614;
+    box-shadow:0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 14px rgba(79,216,196,0.2);
+  }
+  .btn-primary:hover{opacity:.92;}
+  .btn-ghost{background:var(--panel-2); border:1px solid var(--edge); color:var(--ink-dim);}
+  .btn-ghost:hover{border-color:var(--ink-dim); color:var(--ink);}
+  .btn-row{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+
+  /* ---------- Match confirmation ---------- */
+  .match-item{
+    border:1px solid var(--edge); border-left:3px solid var(--warn);
+    border-radius:var(--radius-sm); padding:10px 12px; margin-top:8px; background:var(--panel-2);
+  }
+  .match-item.resolved{border-left-color:var(--measure);}
+  .match-item .raw{font-family:var(--font-data); font-size:12px; font-weight:600; color:var(--ink);}
+  .match-item .qty{color:var(--ink-faint); font-weight:400;}
+  .cand-list{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .cand{
+    font-family:var(--font-data); font-size:11px;
+    border:1px solid var(--edge); border-radius:20px; padding:5px 11px;
+    cursor:pointer; background:var(--panel-raised); color:var(--ink-dim);
+  }
+  .cand:hover{border-color:var(--ink-dim); color:var(--ink);}
+  .cand.chosen{background:var(--measure); color:#0A1614; border-color:var(--measure);}
+  .cand .score{opacity:.6; margin-left:4px;}
+  .skip{font-family:var(--font-data); font-size:10.5px; color:var(--ink-faint); text-decoration:underline; cursor:pointer; margin-left:4px;}
+
+  /* ---------- Gauge (signature element: vertical LED-style readout) ---------- */
+  .gauge-wrap{display:flex; gap:24px; align-items:flex-end;}
+  .gauge{
+    position:relative; width:46px; height:260px;
+    border:1px solid var(--edge); border-radius:8px;
+    background:var(--panel-2);
+    overflow:hidden; flex:none;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.3) inset;
+  }
+  .gauge-ticks{
+    position:absolute; inset:0;
+    background:repeating-linear-gradient(to bottom, transparent 0 25.9px, var(--edge) 25.9px 26px);
+    pointer-events:none;
+  }
+  .fill-added{position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, var(--added-dim), var(--added)); transition:height .5s ease;}
+  .fill-natural{position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, var(--measure-dim), var(--measure)); transition:height .5s ease; box-shadow:0 -2px 12px var(--measure-glow);}
+  .meniscus{position:absolute; left:0; right:0; height:2px; background:var(--ink); transition:bottom .5s ease; box-shadow:0 0 6px rgba(255,255,255,0.5);}
+  .gauge-legend{font-family:var(--font-data); font-size:11px; line-height:2; color:var(--ink-dim);}
+  .swatch{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:7px; vertical-align:-1px;}
+
+  .metrics{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;}
+  .metric{
+    border:1px solid var(--edge); border-radius:var(--radius-sm); padding:12px 13px; background:var(--panel-2);
+  }
+  .metric.headline{
+    grid-column:1 / -1; background:var(--panel-raised); border-color:var(--measure-dim);
+    padding:16px 16px 14px;
+  }
+  .metric .label{
+    font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint);
+    font-family:var(--font-data);
+  }
+  .metric .value{
+    font-family:var(--font-data); font-size:22px; font-weight:600; margin-top:5px; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+  .metric.headline .value{
+    font-size:38px; color:var(--measure); text-shadow:0 0 24px var(--measure-glow);
+    letter-spacing:-.01em;
+  }
+  .metric .sub{font-size:10.5px; color:var(--ink-faint); font-family:var(--font-data); margin-top:3px;}
+
+  table{width:100%; border-collapse:collapse; margin-top:12px; font-size:12px;}
+  th{
+    text-align:left; font-family:var(--font-data); font-weight:600; font-size:10px;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);
+    border-bottom:1px solid var(--edge); padding:7px 8px;
+  }
+  td{padding:8px; border-bottom:1px solid var(--edge-soft); font-family:var(--font-data); color:var(--ink-dim); font-variant-numeric:tabular-nums;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--panel-2);}
+  td.name{font-family:var(--font-ui); color:var(--ink);}
+  td.num{text-align:right;}
+
+  .flag{
+    margin-top:14px; padding:12px 14px; border-radius:var(--radius-sm); font-size:12px; line-height:1.55;
+    border:1px solid; display:flex; gap:10px; align-items:flex-start;
+  }
+  .flag.warn{background:var(--warn-bg); border-color:var(--warn); color:#F5C6B8;}
+  .flag.ok{background:var(--ok-bg); border-color:var(--ok); color:#B8ECE3;}
+  .flag .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:none;}
+  .flag.warn .dot{background:var(--warn); box-shadow:0 0 6px rgba(232,102,74,0.6);}
+  .flag.ok .dot{background:var(--ok); box-shadow:0 0 6px var(--measure-glow);}
+  .flag .disclaimer{font-size:10px; opacity:.65; margin-top:6px; font-family:var(--font-data);}
+
+  .empty{
+    font-family:var(--font-data); font-size:12px; color:var(--ink-faint);
+    border:1px dashed var(--edge); border-radius:var(--radius-sm); padding:26px; text-align:center;
+  }
+
+  .warn-banner{
+    font-family:var(--font-data); font-size:11px; color:#F5C6B8;
+    background:var(--warn-bg); border:1px solid var(--warn); border-radius:var(--radius-sm);
+    padding:9px 11px; margin-top:10px;
+  }
+
+  footer{
+    margin-top:16px; padding:14px 18px;
+    border:1px solid var(--edge); border-radius:var(--radius); background:var(--panel);
+    font-family:var(--font-data); font-size:10.5px; color:var(--ink-faint); line-height:1.7;
+  }
+  footer b{color:var(--ink-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="device-header">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 2v6.5L4.5 17a2 2 0 0 0 1.8 2.9h11.4a2 2 0 0 0 1.8-2.9L15 8.5V2" stroke="#0A1614" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 15h8" stroke="#0A1614" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="title">MSG-Equivalent Analyzer</div>
+        <div class="subtitle">Naturally occurring glutamate · titrimetric reference</div>
+      </div>
+    </div>
+    <div class="status-strip">
+      <div class="status-item"><span class="status-led"></span>Engine: <b>weighted-sum, deterministic</b></div>
+      <div class="status-item">Matching: <b>approximate string matching</b></div>
+      <div class="status-item">Reference: <b>39 spices &amp; seasonings + 1 MSG standard · n=1 pass</b></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT COLUMN: input -->
+    <div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Recipe input</h2>
+          <span class="tag">free text</span>
+        </div>
+        <p class="hint">Paste an ingredient list ("2% black pepper, 5% ginger powder…") and run the analysis below.</p>
+        <textarea id="recipeText">17% coriander powder, 13% dried ginger powder, 11% garlic powder, 16% red chilli crushed, 9% turmeric powder, 11% cumin seed, 7% black pepper powder, 8% garam masala powder, 5% fenugreek seed powder, 3% bay leaf powder</textarea>
+
+        <div class="row">
+          <div class="field">
+            <label>Recipe name</label>
+            <input type="text" id="recipeName" value="My Recipe" />
+          </div>
+          <div class="field">
+            <label>Declared added MSG (%)</label>
+            <input type="number" id="declaredAdded" value="1" step="0.5" min="0" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Per-ingredient uncertainty: <span id="uncVal">10</span>%</label>
+            <input type="range" id="uncertainty" min="0" max="30" value="10" />
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-primary" onclick="parseAndMatch()">Run analysis</button>
+        </div>
+
+        <div id="unparsedBox"></div>
+        <div id="matchBox"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Ingredient database</h2>
+          <span class="tag">39 spices + MSG</span>
+        </div>
+        <p class="hint">Spices and seasonings plus a pure MSG reference, titrimetric analysis. Search to check a value or spelling.</p>
+        <input type="text" id="dbSearch" placeholder="search ingredient…" oninput="renderDb()" />
+        <table id="dbTable" style="margin-top:10px; max-height:220px; display:block; overflow:auto;"></table>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: results -->
+    <div>
+      <div class="panel" id="resultsCard">
+        <div class="panel-head">
+          <h2>Predicted glutamate content</h2>
+          <span class="tag" id="engineTag">standby</span>
+        </div>
+        <div id="resultsBody">
+          <div class="empty">Run an analysis on the left to see the readout and breakdown here.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <b>Scope note:</b> browser-based demo build of the calculator described in the supplementary materials —
+    same weighted-sum engine (contribution = natural&nbsp;MSG%&nbsp;×&nbsp;quantity&nbsp;fraction), same 39-spice
+    reference dataset plus the MSG calibration standard, a lighter approximate string matcher for ingredient
+    name resolution (no LLM disambiguation step here; this build runs entirely client-side, with no server
+    request or external data transfer). For the full Python/Streamlit version with tests, the validation report,
+    and the editable CSV database, see <b>msg_calculator.zip</b>. Uncertainty band and the "No MSG Added"
+    compliance threshold are both configurable modelling choices, not values drawn from replicate measurements
+    or regulatory text — informational only.
+  </footer>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------
+   39-spice reference database + 1 pure MSG calibration standard (natural
+   MSG-equivalent %, titrimetric)
+--------------------------------------------------------------------- */
+const DB = {
+  "Ajwain Powder": 13.29, "Ajwain (whole, cleaned)": 11.35, "Coriander Powder": 10.88,
+  "Onion Powder": 10.46, "Garlic Powder": 10.23, "Oleoresin of Paprika": 9.08,
+  "Red Chilli Crushed": 8.90, "Aniseed (Cleaned)": 8.60, "Garam Masala Powder": 8.30,
+  "Dried Ginger Powder": 7.90, "Turmeric Powder": 7.86, "Black Cardamom Powder": 7.69,
+  "Fenugreek Seed Powder": 7.58, "Corn Powder": 7.34, "Star Anise Powder": 7.30,
+  "Black Pepper Powder": 7.16, "Mace Powder": 6.90, "Nigella Seed (Cleaned)": 6.46,
+  "Bay Leaf Powder": 5.98, "Khatai (Sour Mango) Powder": 5.41, "Nutmeg Powder": 5.30,
+  "Xanthan Gum": 5.25, "Green Cardamom Powder": 5.06, "Clove Powder (steam-processed)": 5.04,
+  "Cumin Seed": 4.80, "Bay Leaf Crushed": 4.15, "Cinnamon Powder": 3.46, "Cubeb Powder": 2.86,
+  "Fenugreek Leaves Crushed": 2.39, "Other Minor Ingredients (aggregate)": 2.00,
+  "Anardana (Dried Pomegranate Seed) Crushed": 1.72, "Modified Starch (Amijel)": 1.30,
+  "Clove (whole, cleaned)": 1.13, "Carrier/Anti-caking Agent B": 0.40,
+  "Carrier/Anti-caking Agent A": 0.18, "Icing Sugar": 0.00, "Carrier/Filler Ingredient": 0.00,
+  "Lactose": 0.00, "Maltodextrin": 0.00, "Mono Sodium Glutamate (pure reference)": 99.00
+};
+
+/* SKU-level variants flagged as unreconciled in the source data — kept out
+   of DB, surfaced separately so the matcher can't silently merge them. */
+const UNMAPPED_VARIANTS = [
+  {raw:"Aniseed Powder (SAI)", pct:13.3, closest:"Aniseed (Cleaned)", closestPct:8.60},
+  {raw:"Red Chilli (CRE)", pct:14.8, closest:"Red Chilli Crushed", closestPct:8.90},
+  {raw:"Cumin seed (SCM)", pct:10.3, closest:"Cumin Seed", closestPct:4.80},
+];
+
+const ALIASES = {
+  "ajwaen clean whole":"Ajwain (whole, cleaned)", "ajwain powder":"Ajwain Powder",
+  "alt-cma powder":"Carrier/Anti-caking Agent A", "alt-mnt powder":"Carrier/Anti-caking Agent B",
+  "amijel powder":"Modified Starch (Amijel)", "anar dana crush":"Anardana (Dried Pomegranate Seed) Crushed",
+  "aniseed clean a":"Aniseed (Cleaned)", "aniseed clean":"Aniseed (Cleaned)",
+  "bay leaf crushed":"Bay Leaf Crushed", "bay leaf powder(pba)":"Bay Leaf Powder",
+  "black cardamom pdr":"Black Cardamom Powder", "black pepper pdr":"Black Pepper Powder",
+  "balck pepper":"Black Pepper Powder", "clove clean(whole)":"Clove (whole, cleaned)",
+  "clove steam powder":"Clove Powder (steam-processed)", "corriander powder(rca)":"Coriander Powder",
+  "corriander pdr":"Coriander Powder", "cumin seed super":"Cumin Seed", "cumin seed clean":"Cumin Seed",
+  "fenugreek leaves crush":"Fenugreek Leaves Crushed", "ginger dry pdr":"Dried Ginger Powder",
+  "ginger powder":"Dried Ginger Powder", "gram masala (mgr)":"Garam Masala Powder",
+  "green cardamon powder":"Green Cardamom Powder", "khatai powder":"Khatai (Sour Mango) Powder",
+  "mace powder(cma)":"Mace Powder", "malto dextrin":"Maltodextrin",
+  "mono sodium glutamate":"Mono Sodium Glutamate (pure reference)",
+  "monosodium glutamate":"Mono Sodium Glutamate (pure reference)",
+  "nigella seed clean":"Nigella Seed (Cleaned)", "oleoresin of paprika":"Oleoresin of Paprika",
+  "others":"Other Minor Ingredients (aggregate)", "red chilli crush":"Red Chilli Crushed",
+  "star anise pdr":"Star Anise Powder", "turmeric(cte)":"Turmeric Powder",
+  "ing-sla pdr":"Carrier/Filler Ingredient", "ing - sla pdr":"Carrier/Filler Ingredient"
+};
+
+const NIHARI_EXAMPLE = "13.3% aniseed powder, 14.8% red chilli cre, 1.5% mace powder cma, 5% garam masala mgr, 3.1% star aniseed powder, 4% ginger powder, 4% cumin seed, 1.5% nutmeg powder, 15% bay leaf powder, 0.4% oleoresin of paprika";
+
+/* ---------------------------------------------------------------------
+   Fuzzy matcher: normalized Levenshtein ratio + token-overlap boost
+--------------------------------------------------------------------- */
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, () => new Array(n+1).fill(0));
+  for (let i=0;i<=m;i++) dp[i][0]=i;
+  for (let j=0;j<=n;j++) dp[0][j]=j;
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++) {
+    dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  }
+  return dp[m][n];
+}
+function ratioScore(a, b) {
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length) || 1;
+  return (1 - dist/maxLen) * 100;
+}
+function tokenOverlapScore(a, b) {
+  const ta = new Set(a.split(/\s+/).filter(Boolean));
+  const tb = new Set(b.split(/\s+/).filter(Boolean));
+  let hits = 0;
+  ta.forEach(t => { tb.forEach(u => { if (u.includes(t) || t.includes(u)) hits++; }); });
+  const denom = Math.max(ta.size, tb.size) || 1;
+  return Math.min(hits/denom, 1) * 100;
+}
+function matchIngredient(rawName, topN=3) {
+  const clean = rawName.trim();
+  const cleanLower = clean.toLowerCase();
+  if (!clean) return [];
+
+  for (const canon in DB) {
+    if (canon.toLowerCase() === cleanLower) return [{canon, pct: DB[canon], score:100, method:"exact"}];
+  }
+  if (ALIASES[cleanLower]) {
+    const canon = ALIASES[cleanLower];
+    return [{canon, pct: DB[canon], score:100, method:"alias"}];
+  }
+
+  const searchSpace = [];
+  for (const canon in DB) searchSpace.push([canon.toLowerCase(), canon]);
+  for (const alias in ALIASES) searchSpace.push([alias, ALIASES[alias]]);
+
+  const scored = searchSpace.map(([text, canon]) => {
+    const s = 0.6*ratioScore(cleanLower, text) + 0.4*tokenOverlapScore(cleanLower, text);
+    return {canon, text, score:s};
+  });
+  scored.sort((a,b) => b.score - a.score);
+
+  const seen = new Set(); const out = [];
+  for (const c of scored) {
+    if (seen.has(c.canon)) continue;
+    seen.add(c.canon);
+    out.push({canon:c.canon, pct:DB[c.canon], score:Math.round(c.score), method:"fuzzy"});
+    if (out.length >= topN) break;
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   Free-text parsing:  "2% black pepper" / "black pepper 2%" / "black pepper: 2%"
+--------------------------------------------------------------------- */
+function parseFreeText(text) {
+  const result = {ingredients: [], unparsed: []};
+  const hasNewlines = text.trim().includes("\n");
+  const chunks = (hasNewlines ? text.split("\n") : text.split(",")).map(c => c.trim()).filter(Boolean);
+
+  for (let chunk of chunks) {
+    chunk = chunk.replace(/\.$/, "").trim();
+    let m = chunk.match(/^([\d.]+)\s*%\s*(.+)$/);
+    if (m) { result.ingredients.push([m[2].replace(/^[-:]\s*/,"").trim(), parseFloat(m[1])]); continue; }
+    m = chunk.match(/^(.+?)\s*[-:]?\s*([\d.]+)\s*%$/);
+    if (m) { result.ingredients.push([m[1].replace(/[-:]\s*$/,"").trim(), parseFloat(m[2])]); continue; }
+    result.unparsed.push(chunk);
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------
+   Core engine — mirrors msg_calc/engine.py exactly
+--------------------------------------------------------------------- */
+function computeRecipe(ingredients, resolvedMap, declaredAdded, uncertaintyRel) {
+  let totalQty = 0, totalNatural = 0, variance = 0;
+  const breakdown = []; const unresolved = [];
+
+  for (const [name, qty] of ingredients) {
+    totalQty += qty;
+    const res = resolvedMap[name];
+    if (!res) { unresolved.push(name); breakdown.push({name, qty, unresolved:true}); continue; }
+    const contribution = res.pct * (qty/100);
+    totalNatural += contribution;
+    const u = contribution * uncertaintyRel;
+    variance += u*u;
+    breakdown.push({name, canon:res.canon, pct:res.pct, qty, contribution, unresolved:false});
+  }
+
+  const band = Math.sqrt(variance);
+  const qtyWarning = (totalQty > 0 && Math.abs(totalQty-100) > 5)
+    ? `Entered quantities sum to ${totalQty.toFixed(1)}%, more than 5 points from 100% — check the recipe.`
+    : null;
+
+  return {
+    breakdown, totalQty, qtyWarning,
+    totalNatural, low: Math.max(0, totalNatural-band), high: totalNatural+band,
+    declaredAdded, total: totalNatural + declaredAdded, unresolved
+  };
+}
+
+function complianceFlag(declaredAdded, naturalPct, threshold=0.5) {
+  const wantsNoAdded = declaredAdded === 0;
+  const flagged = wantsNoAdded && naturalPct >= threshold;
+  let reason;
+  if (!wantsNoAdded) {
+    reason = `Recipe declares ${declaredAdded.toFixed(1)}% intentionally added MSG, so a "No MSG" or "No Added MSG" claim would not apply regardless of natural glutamate content.`;
+  } else if (flagged) {
+    reason = `No MSG is intentionally added, but predicted natural MSG-equivalent is ${naturalPct.toFixed(2)}%, above the ${threshold.toFixed(1)}% sensitivity threshold used here. Per FDA guidance, foods whose ingredients naturally supply free glutamate at this level are not eligible for a "No MSG" or "No Added MSG" claim, even with zero intentional addition.`;
+  } else {
+    reason = `No MSG is intentionally added, and predicted natural MSG-equivalent (${naturalPct.toFixed(2)}%) is below the ${threshold.toFixed(1)}% sensitivity threshold used here, so a "No MSG" or "No Added MSG" claim is not flagged by this rule.`;
+  }
+  return {flagged, reason};
+}
+
+/* ---------------------------------------------------------------------
+   UI state + rendering
+--------------------------------------------------------------------- */
+let pending = {};    // rawName -> {candidates, qty}
+let resolved = {};   // rawName -> {canon, pct}
+
+function parseAndMatch() {
+  const text = document.getElementById("recipeText").value;
+  const parsed = parseFreeText(text);
+  pending = {}; resolved = {};
+
+  const unparsedBox = document.getElementById("unparsedBox");
+  unparsedBox.innerHTML = parsed.unparsed.length
+    ? `<div class="warn-banner">Couldn't parse: ${parsed.unparsed.map(l=>`"${escapeHtml(l)}"`).join(", ")}</div>`
+    : "";
+
+  parsed.ingredients.forEach(([name, qty]) => {
+    const candidates = matchIngredient(name, 3);
+    if (!candidates.length) { pending[name] = {candidates:[], qty}; return; }
+    if (candidates[0].method !== "fuzzy" || candidates[0].score >= 92) {
+      resolved[name] = {canon: candidates[0].canon, pct: candidates[0].pct};
+    } else {
+      pending[name] = {candidates, qty};
+    }
+  });
+
+  renderMatchBox();
+  renderResults();
+}
+
+function chooseCandidate(rawName, idx) {
+  const p = pending[rawName];
+  if (idx === -1) { delete pending[rawName]; renderMatchBox(); renderResults(); return; }
+  const c = p.candidates[idx];
+  resolved[rawName] = {canon:c.canon, pct:c.pct};
+  delete pending[rawName];
+  renderMatchBox();
+  renderResults();
+}
+
+function renderMatchBox() {
+  const box = document.getElementById("matchBox");
+  const keys = Object.keys(pending);
+  if (!keys.length) { box.innerHTML = ""; return; }
+
+  let html = `<p class="hint" style="margin-top:14px;">Low-confidence matches — confirm below rather than guess silently:</p>`;
+  keys.forEach(name => {
+    const {candidates, qty} = pending[name];
+    if (!candidates.length) {
+      html += `<div class="match-item"><span class="raw">"${escapeHtml(name)}" <span class="qty">(${qty}%)</span></span><div class="cand-list"><span style="font-family:var(--font-data);font-size:11px;color:var(--warn);">no plausible match — excluded from total</span></div></div>`;
+      return;
+    }
+    html += `<div class="match-item"><span class="raw">"${escapeHtml(name)}" <span class="qty">(${qty}%)</span></span><div class="cand-list">`;
+    candidates.forEach((c, i) => {
+      html += `<span class="cand" onclick="chooseCandidate('${escapeAttr(name)}', ${i})">${escapeHtml(c.canon)}<span class="score">${c.score}</span></span>`;
+    });
+    html += `<span class="skip" onclick="chooseCandidate('${escapeAttr(name)}', -1)">skip</span></div></div>`;
+  });
+  box.innerHTML = html;
+}
+
+function setEngineTag(text) {
+  const tag = document.getElementById("engineTag");
+  if (tag) tag.textContent = text;
+}
+
+function renderResults() {
+  const body = document.getElementById("resultsBody");
+  const ingredientNames = new Set([...Object.keys(resolved), ...Object.keys(pending)]);
+  if (!ingredientNames.size) { body.innerHTML = `<div class="empty">Run an analysis on the left to see the readout and breakdown here.</div>`; setEngineTag("standby"); return; }
+
+  // Build ingredient list only from resolved items (pending shown separately, excluded from totals)
+  const text = document.getElementById("recipeText").value;
+  const parsed = parseFreeText(text);
+  const declaredAdded = parseFloat(document.getElementById("declaredAdded").value) || 0;
+  const uncertaintyRel = parseFloat(document.getElementById("uncertainty").value) / 100;
+
+  const resolvedIngredients = parsed.ingredients.filter(([n]) => resolved[n]);
+  if (!resolvedIngredients.length) {
+    body.innerHTML = `<div class="empty">No ingredients resolved yet — confirm the matches above.</div>`;
+    setEngineTag("pending");
+    return;
+  }
+  setEngineTag("reading");
+
+  const result = computeRecipe(resolvedIngredients, resolved, declaredAdded, uncertaintyRel);
+  const flag = complianceFlag(declaredAdded, result.totalNatural);
+
+  const totalForFill = Math.max(result.total, 1);
+  const naturalPct = (result.totalNatural / totalForFill) * 100;
+  const addedPct = (declaredAdded / totalForFill) * 100;
+
+  let html = "";
+  if (result.qtyWarning) html += `<div class="warn-banner">${escapeHtml(result.qtyWarning)}</div>`;
+
+  html += `<div class="gauge-wrap" style="margin-top:${result.qtyWarning?'12':'2'}px;">
+    <div class="gauge">
+      <div class="fill-added" style="height:${addedPct}%;"></div>
+      <div class="fill-natural" style="height:${naturalPct}%; bottom:${addedPct}%;"></div>
+      <div class="meniscus" style="bottom:${naturalPct+addedPct}%;"></div>
+      <div class="gauge-ticks"></div>
+    </div>
+    <div class="gauge-legend">
+      <div><span class="swatch" style="background:var(--measure);"></span>Natural glutamate</div>
+      <div><span class="swatch" style="background:var(--added);"></span>Added MSG (declared)</div>
+      <div style="margin-top:8px; color:var(--ink-faint);">Fill scaled to total = ${result.total.toFixed(2)}%</div>
+    </div>
+  </div>`;
+
+  html += `<div class="metrics">
+    <div class="metric headline"><div class="label">Natural MSG-equivalent</div><div class="value">${result.totalNatural.toFixed(2)}%</div><div class="sub">± ${(result.high-result.totalNatural).toFixed(2)}pt band · range ${result.low.toFixed(2)}–${result.high.toFixed(2)}%</div></div>
+    <div class="metric"><div class="label">Declared added MSG</div><div class="value">${declaredAdded.toFixed(2)}%</div><div class="sub">as entered</div></div>
+    <div class="metric"><div class="label">Total MSG-equivalent</div><div class="value">${result.total.toFixed(2)}%</div><div class="sub">natural + added</div></div>
+  </div>`;
+
+  html += `<table><thead><tr><th>Ingredient</th><th>Matched to</th><th style="text-align:right;">MSG%</th><th style="text-align:right;">Qty%</th><th style="text-align:right;">Contrib.</th></tr></thead><tbody>`;
+  result.breakdown.forEach(b => {
+    html += `<tr><td class="name">${escapeHtml(b.name)}</td><td>${b.unresolved?'—':escapeHtml(b.canon)}</td><td class="num">${b.unresolved?'—':b.pct.toFixed(2)}</td><td class="num">${b.qty}</td><td class="num">${b.unresolved?'—':b.contribution.toFixed(3)}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+
+  html += `<div class="flag ${flag.flagged?'warn':'ok'}"><div class="dot"></div><div>${escapeHtml(flag.reason)}<div class="disclaimer">Informational flag only, based on a modelling threshold set for this tool — not a legal or regulatory determination, and not an FDA-defined limit.</div></div></div>`;
+
+  body.innerHTML = html;
+}
+
+function renderDb() {
+  const q = document.getElementById("dbSearch").value.toLowerCase();
+  const rows = Object.entries(DB)
+    .filter(([name]) => name.toLowerCase().includes(q))
+    .sort((a,b) => b[1]-a[1]);
+  let html = `<thead><tr><th>Ingredient</th><th style="text-align:right;">Natural MSG%</th></tr></thead><tbody>`;
+  rows.forEach(([name, pct]) => { html += `<tr><td class="name">${escapeHtml(name)}</td><td class="num">${pct.toFixed(2)}</td></tr>`; });
+  html += `</tbody>`;
+  document.getElementById("dbTable").innerHTML = html;
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeAttr(s){ return s.replace(/'/g, "\\'"); }
+
+document.getElementById("uncertainty").addEventListener("input", e => {
+  document.getElementById("uncVal").textContent = e.target.value;
+  if (Object.keys(resolved).length) renderResults();
+});
+document.getElementById("declaredAdded").addEventListener("input", () => { if (Object.keys(resolved).length) renderResults(); });
+
+renderDb();
+parseAndMatch();
+</script>
+</body>
+</html>
