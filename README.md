@@ -7,7 +7,8 @@ Supports quality control and formulation assessments, running entirely via a sin
 
 ## Open Research Software & Citation
 Accompanies the research manuscript on naturally occurring monosodium glutamate.
-* **Zenodo Software Record / DOI:** Linked via standard Zenodo badges (`10.5281/zenodo.22045295`).
+* **Zenodo Software Record / DOI:** 
+  [![DOI](https://zenodo.org)](https://doi.org)
 
 ## How to Use
 1. Download `msg_calculator_interactive.html`.
